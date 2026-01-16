@@ -31,13 +31,111 @@ type Graph = {
 
 type Candidate = {
   portId: string
-  prevCandidate: Candidate
+  prevCandidate: Candidate | null
   g: number
 }
 
 export class HyperGraphSolver extends BaseSolver {
+  candidateQueue: Candidate[]
+  connectionQueue: Connection[]
+  currentConnection: Connection | undefined = undefined
+  visitedPortIds: Set<string>
+
   constructor(private graph: Graph) {
     super()
+
+    this.connectionQueue = [...graph.connections]
+    this.candidateQueue = []
+    this.visitedPortIds = new Set()
+
+    const firstConnection = this.connectionQueue.shift()
+    if (!firstConnection) {
+      this.failed = true
+      this.error = "No connections found"
+      return
+    }
+    this.currentConnection = firstConnection
+
+    this.candidateQueue.push({
+      g: 0,
+      portId: firstConnection.startPortId,
+      prevCandidate: null,
+    })
+  }
+
+  override _step() {
+    this.candidateQueue.sort(
+      (a, b) => a.g + this.hcost(a) - (b.g + this.hcost(b)),
+    )
+    let currentCandidate = this.candidateQueue.shift()
+
+    while (this.visitedPortIds.has(currentCandidate?.portId!)) {
+      currentCandidate = this.candidateQueue.shift()
+    }
+
+    if (!currentCandidate) {
+      this.failed = true
+      this.error = "Ran out of candidates"
+      return
+    }
+    this.visitedPortIds.add(currentCandidate.portId)
+    if (currentCandidate.portId === this.currentConnection?.endPortId) {
+      this.solved = true
+      return
+    }
+    const connectedRegions = this.graph.regions.filter((region) =>
+      region.portIds.includes(currentCandidate.portId),
+    )
+    const adjacentPortIds = connectedRegions
+      .map((region) => region.portIds)
+      .flat()
+    adjacentPortIds.forEach((portId) => {
+      if (!this.visitedPortIds.has(portId))
+        this.candidateQueue.push({
+          portId,
+          g: this.gcost({
+            portId,
+            g: 0,
+            prevCandidate: currentCandidate,
+          }),
+          prevCandidate: currentCandidate,
+        })
+    })
+  }
+
+  hcost(candidate: Candidate): number {
+    const currentPort = this.graph.ports.find(
+      (port) => port.portId === candidate.portId,
+    )
+    const target = this.graph.ports.find(
+      (port) => port.portId === this.currentConnection?.endPortId,
+    )
+    if (!currentPort || !target) return 0
+    const distance = Math.sqrt(
+      (currentPort.x - target.x) ** 2 + (currentPort.y - target.y) ** 2,
+    )
+    return distance
+  }
+
+  gcost(candidate: Candidate): number {
+    const currentCandidate = candidate
+    const { prevCandidate } = currentCandidate
+    if (!prevCandidate) return 0
+
+    const currentPosition = this.graph.ports.find(
+      (port) => port.portId === currentCandidate.portId,
+    )
+    const prevPosition = this.graph.ports.find(
+      (port) => port.portId === prevCandidate.portId,
+    )
+    if (!currentPosition || !prevPosition) return 0
+
+    const distance = Math.sqrt(
+      (currentPosition.x - prevPosition.x) ** 2 +
+        (currentPosition.y - prevPosition.y) ** 2,
+    )
+
+    return prevCandidate.g + distance
   }
 
   override visualize(): GraphicsObject {
@@ -69,7 +167,7 @@ export class HyperGraphSolver extends BaseSolver {
       graphicsObject.points.push({
         x,
         y,
-        label: `x: ${x}\ny: ${y}\nportId: ${portId}`,
+        label: `portId: ${portId}`,
       })
     })
     this.graph.connections.forEach((connection) => {
@@ -83,6 +181,24 @@ export class HyperGraphSolver extends BaseSolver {
           points: [startPort, endPort],
           strokeDash: [1, 2],
         })
+    })
+
+    this.candidateQueue.forEach((candidate) => {
+      const currentPort = this.graph.ports.find(
+        (port) => port.portId === candidate.portId,
+      )
+      if (!currentPort) return
+      if (!candidate.prevCandidate) return
+      const previousPort = this.graph.ports.find(
+        (port) => port.portId === candidate.prevCandidate?.portId,
+      )
+      if (!previousPort) return
+      graphicsObject.lines.push({
+        points: [
+          { x: currentPort.x, y: currentPort.y },
+          { x: previousPort.x, y: previousPort.y },
+        ],
+      })
     })
     return graphicsObject
   }

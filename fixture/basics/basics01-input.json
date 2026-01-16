@@ -370,7 +370,7 @@
     {
       "connectionId": "c1",
       "startPortId": "p-r0c0-r0c1",
-      "endPortId": "p-r5c4-r5c5"
+      "endPortId": "p-r4c5-r5c5"
     },
     {
       "connectionId": "c2",
