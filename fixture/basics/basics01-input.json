@@ -308,11 +308,11 @@
     { "portId": "p-r0c4-r1c4", "x": 90, "y": 20 },
     { "portId": "p-r0c5-r1c5", "x": 110, "y": 20 },
 
-    { "portId": "p-r1c0-r1c1", "x": 40, "y": 30 },
-    { "portId": "p-r1c1-r1c2", "x": 60, "y": 30 },
-    { "portId": "p-r1c2-r1c3", "x": 80, "y": 30 },
-    { "portId": "p-r1c3-r1c4", "x": 100, "y": 30 },
-    { "portId": "p-r1c4-r1c5", "x": 120, "y": 30 },
+    { "portId": "p-r1c0-r1c1", "x": 20, "y": 30 },
+    { "portId": "p-r1c1-r1c2", "x": 40, "y": 30 },
+    { "portId": "p-r1c2-r1c3", "x": 60, "y": 30 },
+    { "portId": "p-r1c3-r1c4", "x": 80, "y": 30 },
+    { "portId": "p-r1c4-r1c5", "x": 100, "y": 30 },
 
     { "portId": "p-r1c0-r2c0", "x": 10, "y": 40 },
     { "portId": "p-r1c1-r2c1", "x": 30, "y": 40 },
@@ -374,7 +374,7 @@
     },
     {
       "connectionId": "c2",
-      "startPortId": "p-r0c5-r1c5",
+      "startPortId": "p-r3c2-r3c3",
       "endPortId": "p-r5c0-r5c1"
     }
   ]

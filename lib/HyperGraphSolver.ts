@@ -35,10 +35,14 @@ type Candidate = {
   g: number
 }
 
+type Routes = Map<string, string[]>
+
 export class HyperGraphSolver extends BaseSolver {
   candidateQueue: Candidate[]
   connectionQueue: Connection[]
   currentConnection: Connection | undefined = undefined
+  solvedConnections: Connection[] = []
+  routes: Routes = new Map()
   visitedPortIds: Set<string>
 
   constructor(private graph: Graph) {
@@ -72,16 +76,44 @@ export class HyperGraphSolver extends BaseSolver {
     while (this.visitedPortIds.has(currentCandidate?.portId!)) {
       currentCandidate = this.candidateQueue.shift()
     }
-
     if (!currentCandidate) {
       this.failed = true
-      this.error = "Ran out of candidates"
+      this.error = `Ran out of candidates when processing connection: ${this.currentConnection?.connectionId}`
       return
     }
+
     this.visitedPortIds.add(currentCandidate.portId)
     if (currentCandidate.portId === this.currentConnection?.endPortId) {
-      this.solved = true
-      return
+      const currentConnectionId: string =
+        this.currentConnection?.connectionId || ""
+      const finalRoute = this.reconstructPath(currentCandidate)
+      this.routes.set(currentConnectionId, finalRoute)
+
+      if (this.connectionQueue.length === 0) {
+        this.solved = true
+        return
+      } else {
+        this.solvedConnections.push(this.currentConnection)
+        const nextConnection: Connection = this.connectionQueue.shift()!
+        this.currentConnection = nextConnection
+        const nextPort = this.graph.ports.find(
+          (port) => port.portId === nextConnection.startPortId,
+        )
+        if (!nextPort) {
+          this.failed = true
+          this.error = `port: ${nextConnection.startPortId} not found`
+          return
+        }
+        this.candidateQueue = [
+          {
+            portId: nextPort.portId,
+            g: 0,
+            prevCandidate: null,
+          },
+        ]
+        this.visitedPortIds.clear()
+        return
+      }
     }
     const connectedRegions = this.graph.regions.filter((region) =>
       region.portIds.includes(currentCandidate.portId),
@@ -101,6 +133,16 @@ export class HyperGraphSolver extends BaseSolver {
           prevCandidate: currentCandidate,
         })
     })
+  }
+
+  reconstructPath(candidate: Candidate): string[] {
+    const path: string[] = []
+    let currentCandidate: Candidate | null = candidate
+    while (currentCandidate) {
+      path.push(currentCandidate.portId)
+      currentCandidate = currentCandidate.prevCandidate
+    }
+    return path.reverse()
   }
 
   hcost(candidate: Candidate): number {
@@ -181,6 +223,26 @@ export class HyperGraphSolver extends BaseSolver {
           points: [startPort, endPort],
           strokeDash: [1, 2],
         })
+    })
+
+    this.routes.forEach((portIds) => {
+      for (let i = 0; i < portIds.length - 1; i++) {
+        const firstPort = this.graph.ports.find(
+          (port) => port.portId === portIds[i],
+        )
+        const secondPort = this.graph.ports.find(
+          (port) => port.portId === portIds[i + 1],
+        )
+        if (firstPort && secondPort)
+          graphicsObject.lines.push({
+            points: [
+              { x: firstPort.x, y: firstPort.y },
+              { x: secondPort.x, y: secondPort.y },
+            ],
+            strokeColor: "red",
+            strokeWidth: 1,
+          })
+      }
     })
 
     this.candidateQueue.forEach((candidate) => {
