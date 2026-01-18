@@ -374,7 +374,7 @@
     },
     {
       "connectionId": "c2",
-      "startPortId": "p-r3c2-r3c3",
+      "startPortId": "p-r0c5-r1c5",
       "endPortId": "p-r5c0-r5c1"
     }
   ]
