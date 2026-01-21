@@ -177,17 +177,6 @@ export class HyperGraphSolver extends BaseSolver {
 
     const adjacentPortIds = connectedRegions.flatMap((region) => region.portIds)
     for (const portId of adjacentPortIds) {
-      const currentPort = this.graph.ports.find(
-        (port) => port.portId === currentCandidate.portId,
-      )
-      const currentAdjacentPort = this.graph.ports.find(
-        (port) => port.portId === portId,
-      )
-      const portRegion = this.graph.regions.find((region) =>
-        region.portIds.includes(portId),
-      )
-      if (!currentPort || !currentAdjacentPort || !portRegion) continue
-
       if (!this.visitedPortIds.has(portId))
         this.candidateQueue.push({
           portId,
