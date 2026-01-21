@@ -1,8 +1,12 @@
+import { getBoundsCenter } from "@tscircuit/math-utils"
 import { BaseSolver } from "@tscircuit/solver-utils"
 import type { GraphicsObject } from "graphics-debug"
-import { getBoundsCenter } from "@tscircuit/math-utils"
+import { gcost as gcostFn } from "./gcost"
+import { getCandidatePath } from "./getCandidatePath"
+import { getIntersectingRoutesForPath } from "./getIntersectingRoutesForPath"
+import { hcost as hcostFn } from "./hcost"
 
-type Region = {
+export type Region = {
   minX: number
   maxX: number
   minY: number
@@ -11,39 +15,42 @@ type Region = {
   portIds: string[]
 }
 
-type Port = {
+export type Port = {
   x: number
   y: number
   portId: string
 }
 
-type Connection = {
+export type Connection = {
   startPortId: string
   endPortId: string
   connectionId: string
 }
 
-type Graph = {
+export type Graph = {
   regions: Region[]
   connections: Connection[]
   ports: Port[]
 }
 
-type Candidate = {
+export type Candidate = {
   portId: string
   prevCandidate: Candidate | null
   g: number
 }
 
-type Routes = Map<string, Port[]>
+export type Routes = Map<string, Port[]>
 
 export class HyperGraphSolver extends BaseSolver {
+  private readonly RIPPING_COST = 5000
+  private readonly CONGESTION_COST_MULTIPLIER = 10
   candidateQueue: Candidate[]
   connectionQueue: Connection[]
   currentConnection: Connection | undefined = undefined
   solvedConnections: Array<{ connection: Connection; route: Port[] }> = []
   routes: Routes = new Map()
   visitedPortIds: Set<string>
+  congestionMap: Map<string, number>
 
   get usedPortIds() {
     const usedPortIds = new Set()
@@ -61,6 +68,7 @@ export class HyperGraphSolver extends BaseSolver {
     this.connectionQueue = [...graph.connections]
     this.candidateQueue = []
     this.visitedPortIds = new Set()
+    this.congestionMap = new Map()
 
     const firstConnection = this.connectionQueue.shift()
     if (!firstConnection) {
@@ -85,8 +93,9 @@ export class HyperGraphSolver extends BaseSolver {
 
     let currentCandidate = this.candidateQueue.shift()
     while (
-      this.visitedPortIds.has(currentCandidate?.portId!) ||
-      this.usedPortIds.has(currentCandidate?.portId)
+      currentCandidate &&
+      (this.visitedPortIds.has(currentCandidate.portId) ||
+        this.usedPortIds.has(currentCandidate.portId))
     ) {
       currentCandidate = this.candidateQueue.shift()
     }
@@ -100,14 +109,41 @@ export class HyperGraphSolver extends BaseSolver {
     this.visitedPortIds.add(currentCandidate.portId)
 
     if (currentCandidate.portId === this.currentConnection?.endPortId) {
+      const finalRoute = this.getCandidatePath(currentCandidate)
+      const intersectingConnectionIds = getIntersectingRoutesForPath(
+        finalRoute,
+        this.routes,
+        this.graph.regions,
+      )
+
+      for (const id of intersectingConnectionIds) {
+        this.solvedConnections = this.solvedConnections.filter(
+          (sc) => sc.connection.connectionId !== id,
+        )
+        this.routes.delete(id)
+
+        const rippedConnection = this.graph.connections.find(
+          (c) => c.connectionId === id,
+        )
+        if (rippedConnection) {
+          this.connectionQueue.unshift(rippedConnection)
+        }
+      }
+
       this.solvedConnections.push({
         connection: this.currentConnection,
-        route: this.getCandidatePath(currentCandidate),
+        route: finalRoute,
       })
       const currentConnectionId: string =
         this.currentConnection?.connectionId || ""
-      const finalRoute = this.getCandidatePath(currentCandidate)
       this.routes.set(currentConnectionId, finalRoute)
+
+      for (const port of finalRoute) {
+        this.congestionMap.set(
+          port.portId,
+          (this.congestionMap.get(port.portId) || 0) + 1,
+        )
+      }
 
       if (this.connectionQueue.length === 0) {
         this.solved = true
@@ -139,10 +175,19 @@ export class HyperGraphSolver extends BaseSolver {
       region.portIds.includes(currentCandidate.portId),
     )
 
-    const adjacentPortIds = connectedRegions
-      .map((region) => region.portIds)
-      .flat()
+    const adjacentPortIds = connectedRegions.flatMap((region) => region.portIds)
     for (const portId of adjacentPortIds) {
+      const currentPort = this.graph.ports.find(
+        (port) => port.portId === currentCandidate.portId,
+      )
+      const currentAdjacentPort = this.graph.ports.find(
+        (port) => port.portId === portId,
+      )
+      const portRegion = this.graph.regions.find((region) =>
+        region.portIds.includes(portId),
+      )
+      if (!currentPort || !currentAdjacentPort || !portRegion) continue
+
       if (!this.visitedPortIds.has(portId))
         this.candidateQueue.push({
           portId,
@@ -157,54 +202,27 @@ export class HyperGraphSolver extends BaseSolver {
   }
 
   getCandidatePath(candidate: Candidate): Port[] {
-    const path: Port[] = []
-
-    let currentCandidate: Candidate | null = candidate
-    while (currentCandidate) {
-      const port = this.graph.ports.find(
-        (port) => port.portId === currentCandidate?.portId,
-      )
-      if (port) path.push(port)
-      currentCandidate = currentCandidate.prevCandidate
-    }
-
-    return path.reverse()
+    return getCandidatePath(candidate, this.graph.ports)
   }
 
   hcost(candidate: Candidate): number {
-    const currentPort = this.graph.ports.find(
-      (port) => port.portId === candidate.portId,
+    return hcostFn(
+      candidate,
+      this.graph.ports,
+      this.currentConnection?.endPortId || "",
     )
-    const target = this.graph.ports.find(
-      (port) => port.portId === this.currentConnection?.endPortId,
-    )
-    if (!currentPort || !target) return 0
-
-    const distance = Math.sqrt(
-      (currentPort.x - target.x) ** 2 + (currentPort.y - target.y) ** 2,
-    )
-    return distance
   }
 
   gcost(candidate: Candidate): number {
-    const currentCandidate = candidate
-    const { prevCandidate } = currentCandidate
-    if (!prevCandidate) return 0
-
-    const currentPosition = this.graph.ports.find(
-      (port) => port.portId === currentCandidate.portId,
+    return gcostFn(
+      candidate,
+      this.graph.ports,
+      this.graph.regions,
+      this.routes,
+      this.congestionMap,
+      this.RIPPING_COST,
+      this.CONGESTION_COST_MULTIPLIER,
     )
-    const prevPosition = this.graph.ports.find(
-      (port) => port.portId === prevCandidate.portId,
-    )
-    if (!currentPosition || !prevPosition) return 0
-
-    const distance = Math.sqrt(
-      (currentPosition.x - prevPosition.x) ** 2 +
-        (currentPosition.y - prevPosition.y) ** 2,
-    )
-
-    return prevCandidate.g + distance
   }
 
   override visualize(): GraphicsObject {

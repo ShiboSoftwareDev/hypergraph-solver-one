@@ -2709,6 +2709,11 @@
   ],
   "connections": [
     {
+      "connectionId": "c0",
+      "startPortId": "cell_0_0:B-L",
+      "endPortId": "cell_0_2->cell_1_2:B-R"
+    },
+    {
       "connectionId": "c1",
       "startPortId": "cell_0_0:T-L",
       "endPortId": "cell_2_2:B-R"
